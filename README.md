@@ -4,7 +4,7 @@
 
 
 ##2) Sources Used for Project 4.txt is the file showing the resources I referenced
-in order to complete the project. 
+##   in order to complete the project. 
 
 
 ##3) projectTemplate.Rmd is an R markdown file of the final project
