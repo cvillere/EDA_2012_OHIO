@@ -1,0 +1,915 @@
+Campaign Contributions From Ohio For Election 2012 
+by Christian Villere
+========================================================
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, 
+                      message=FALSE)
+
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for 
+#this code chunk.# This prevents the code from 
+#displaying in the knitted HTML output.You should set
+#echo=FALSE for all code chunks in your file.
+#install.packages("knitr", dependencies = T)
+#install.packages("contrib.url")
+
+library(RColorBrewer)
+library(ggplot2)
+library(dplyr)
+
+
+```
+
+```{r echo=FALSE, Load_the_Data}
+
+setwd("C:/Users/Plo/exploratory Data Analysis/Final Project")
+
+#creating file connection object
+con <- file("P00000001-OH.csv")
+
+#read in column names from file
+ln <- readLines(file("P00000001-OH.csv"), n=1) 
+
+
+#So, read column names separately, add one more dummy 
+#column named "dummy"
+ln <- paste (ln,'dummy', sep=',')
+
+#strip column names from file, split the column names 
+#into substrings, and save into memory 
+col_names_raw <- unlist(strsplit(ln, ","))
+
+
+#read csv skipping the first row and supplying 
+#the col names
+contribs_oh <- read.csv("P00000001-OH.csv", 
+                        col.names=col_names_raw, 
+                        header=FALSE, row.names=NULL,
+                        skip=1)
+
+#closing file connection
+close(con)
+
+#removing dummy variable, which was added in 
+#order to read in the data. 
+contribs_oh <- subset(contribs_oh, select = -dummy)
+
+
+#removing negative or 0 entries, which are 
+#bookkeeping items. 
+contribs_ohio <- subset(contribs_oh, 
+                        contribs_oh$contb_receipt_amt 
+                        == 0)
+contributions_olow <- subset(contribs_oh, 
+                      contribs_oh$contb_receipt_amt < 0)
+
+#This is the dataset I will work with 
+#throughout the analysis. 
+contribs_oh <- subset(contribs_oh, 
+                      contribs_oh$contb_receipt_amt > 0)
+
+
+
+
+str(contribs_oh)
+                           
+```
+
+This report explores 151,479 campaign contributions 
+made to Presidential Campaigns in the 2012 election 
+from the state of Ohio. We will explore from where
+in Ohio these contributions came from, any other supplied
+demographic information that can help us shed light
+on the contributors, which candidates had more successful 
+fundraising efforts in the state, and the relationship
+between those efforts and the outcome of the election.
+Our target variable, or variable of interest, is 
+contribution amount represented as 
+contb_receipt_amt in the dataset.
+
+
+# Univariate Plots Section
+```{r echo=FALSE}
+
+p0 <- qplot(x= contb_receipt_amt, data = 
+              contribs_oh, binwidth = 20) 
+
+p0 + scale_x_continuous(lim = c(0, 2000))
+```
+
+Data is heavily skewed toward lower contribution 
+amounts. Lets take a log of the x scale to see if 
+we can determine which of the contribution amounts 
+was most popular. 
+
+
+```{r echo=FALSE, Univariate_Plots}
+p1 <- qplot(x= contb_receipt_amt, 
+            data = contribs_oh, binwidth = .1) 
+
+p1 + scale_x_log10(breaks = c(0, 10, 100, 1000))
+
+```
+
+The most common contribution amount is $100. That 
+makes a lot of sense since its a common amount in 
+general and on an online contribution form it is 
+most likely a box that folks can check to determine 
+that's how much they want to give. Due to this variable
+looking so approximately normal, I'm going to use the 
+scale transformation throughout the report. 
+
+
+```{r echo=FALSE}
+p2 <- qplot(x = cand_nm, data = contribs_oh) +
+  theme(axis.text.x = element_text(angle = 45, 
+                      hjust = 1, vjust = 1))
+
+p2
+```
+
+Although there were 14 candidates in the race, 
+only two, Mitt Romney and Barack Obama received 
+a significant number of donations. The instructions 
+suggest to add the gender of each candidate or the 
+political party, but at this time neither additional 
+variable appears interesting or enlightening.
+
+
+```{r echo=FALSE}
+contrib <- table(contribs_oh$contbr_city)
+contrib_can <- sort(contrib)
+top_cities <- tail(names(contrib_can), 9)
+contrib_cities <- subset(contribs_oh, 
+                         contbr_city %in% top_cities)
+
+p3 <- qplot(x = contbr_city, data = contrib_cities) + 
+  theme(axis.text.x = element_text(angle = 45, 
+                                   hjust = 1, vjust = 1))
+
+p3
+
+head(summary(contribs_oh$contbr_city), 20)
+```
+
+
+Not terribly surprising. The top cities were 
+the six I had heard of in Ohio, and four I had not.
+Given that these donations seem to be coming from 
+all over the state, and are not concentrated in just 
+a couple places, it will be interesting to see if Obama
+receives more or less total contributions in the state 
+than the Republicans.
+
+
+
+```{r echo=FALSE}
+occupations <- table(contribs_oh$contbr_occupation)
+occupations_oh <- sort(occupations)
+top_occs <- tail(names(occupations_oh), 9)
+top_occupations <- subset(contribs_oh, 
+                      contbr_occupation %in% top_occs)
+
+p4 <- qplot(x = contbr_occupation, 
+            data = top_occupations) + 
+  theme(axis.text.x = element_text(angle = 45, 
+                                   hjust = 1, vjust = 1))
+
+p4
+
+head(summary(contribs_oh$contbr_occupation), 20)
+
+
+```
+
+Here's where things get interesting from my point 
+of view. The occupation of the folks who gave most 
+frequently is listed as retired. Let's delve 
+into that a little bit. It is pretty amazing
+they represent such a large number of the 
+political contributions in the state. 
+Judging from the summary of the professions, 
+it appears this is a list of only individuals.If 
+the list did include businesses, it would make the
+representation of retired folks on this 
+list even larger. Unfortunately, two of the 
+professions listed, "information requested
+per best effors" and "information requested" do
+not provide us with any information about the 
+profession of almost 10,000 contributors or 
+dataset observations.
+
+
+```{r echo=FALSE}
+contribs_oh_retired <- subset(
+  contribs_oh, contbr_occupation == "RETIRED")
+
+p5 <- qplot(x = cand_nm, data = contribs_oh_retired) + 
+  theme(axis.text.x = element_text(angle = 45, 
+                                hjust = 1, vjust = 1))
+
+p5
+
+```
+
+Unless there was a rash of young retirees in Ohio, 
+its mildly surprising Obama had roughly 50% more 
+contributions from that age group than Mitt Romney.
+Older folks typically vote Republican. In a swing 
+state like Ohio, President Obama was probably 
+appealing to voters across the aisle with such
+high numbers of contributions from this age group.
+Let's take a look at where these retired contributors 
+lived.
+
+
+```{r echo=FALSE}
+retired_oh <- table(contribs_oh_retired$contbr_city)
+retired_oh <- sort(retired_oh)
+top_retired <- tail(names(retired_oh), 12)
+top_retired_city <- subset(contribs_oh_retired, 
+                           contbr_city %in% top_retired)
+
+p6 <- qplot(x = contbr_city, data = top_retired_city) + 
+  theme(axis.text.x = element_text(angle = 45, 
+                                  hjust = 1, vjust = 1))
+
+p6
+
+
+```
+
+
+The top 3 cities for where political contributions 
+came from is the same for retired people as it is 
+for the entire sample of contributors. 
+
+
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+The dataset consists of 18 variables of 151,479 
+observations or contributions made to 
+Presidential campaigns in Ohio for the 2012 
+Presidential election. Almost all the variables are 
+factors, with the exception of contb_receipt_dt, 
+contb_receipt_amt, and file_num. 
+
+### What is/are the main feature(s) of interest in your dataset?
+The main features of interest in the dataset are the 
+contribution amount, and the candidate awarded 
+with that contribution.
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+Other features of interest are what the contributors 
+do for a living and where they actually live.  
+
+### Did you create any new variables from existing variables in the dataset?
+I didn't create any new variables because I can't 
+determine there is any benefit to doing so at this 
+stage. The assignment suggests adding a variable for 
+candidate gender or candiate political party. 
+Right now, I don't see any analytical benefit 
+to adding either of those two variables or any 
+other variable. 
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+There were a couple things I had to do early on 
+that were unique to this dataset. First, it was not 
+assimple as using the read.csv command to read in the 
+data. According to another user, whom I credit in 
+my resources section, the 2012 data has a trailing comma. 
+Due to this, R thinks there is an extra column. I used 
+some code from the user to create the additional 
+column, read in the data, and manage to do so 
+without causing any issues with the column names 
+being moved one to the right, which was a problem 
+with other solutions. Second, it appears there 
+were some contribution amounts of zero. I subsetted 
+them from the data, due to them not being necessary,
+and may look at them later on depending where the 
+analysis takes me.  
+
+
+# Bivariate Plots Section
+
+Let's take a look at contribution amount and 
+contributor city together.
+
+```{r echo=FALSE}
+p7 <- ggplot(aes(x = contbr_city, y = contb_receipt_amt),
+      data = contrib_cities) + 
+      theme(axis.text.x = 
+      element_text(angle = 45, hjust = 1, vjust = 1)) + 
+      geom_boxplot() 
+
+
+p7 + scale_y_log10()
+
+```
+
+Interesting that the more populous urban cities have more
+donations, Dublin has the highest median. The 
+interquartile ranges are relatively similar. Dayton and 
+and Columbus have the most numerous amount of outliers 
+in the graph. 
+
+Let's consider contribution amount and occupation
+
+
+```{r echo=FALSE}
+p8 <- ggplot(aes(x = contbr_occupation,
+  y = contb_receipt_amt), data = top_occupations) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, 
+  vjust = 1)) + geom_boxplot()
+
+
+p8 + scale_y_log10()
+
+```
+
+interestingly, those without an attributed occupation
+have the highest median contribution amount. Retired 
+folks have many more outliers, but of smaller amounts,
+while attorney, homemaker, and 
+physican have less outliers, but at larger amounts.
+The range of amounts for teachers is quite small, 
+but several of them gave atleast $500. That's pretty
+impressive since its considered a poorly 
+compensated occupation.
+
+
+Let's consider contribution amount and being retired.
+
+
+```{r echo=FALSE}
+p9 <- ggplot(aes(x = contbr_occupation, 
+  y = contb_receipt_amt), data = contribs_oh_retired) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+  vjust = 1)) + geom_boxplot() 
+
+p9 + scale_y_log10(breaks = c(0, 10, 100, 1000))
+
+summary(contribs_oh_retired$contb_receipt_amt)
+```
+
+Fairly plain graph. Median line sits right at $50.
+Top of the box at $100, and lower end of the box at 
+$25. Lots of outliers beyond the $1000 mark. 
+
+
+Let's take a look at contribution amount and date
+
+
+```{r echo=FALSE}
+#converting date from factor to a date format
+contribs_oh$contb_receipt_dt <- 
+  as.Date(contribs_oh$contb_receipt_dt, "%d-%b-%y")
+
+#group by month
+contribs_oh$month <- 
+  as.Date(cut(contribs_oh$contb_receipt_dt,
+  breaks = "month"))
+
+#group by week
+contribs_oh$week <- 
+  as.Date(cut(contribs_oh$contb_receipt_dt,
+  breaks = "week",
+  start.on.monday = FALSE))
+
+
+p11 <- ggplot(aes(x = contb_receipt_dt, 
+  y = contb_receipt_amt), data = contribs_oh) + 
+  theme(axis.text.x = element_text(angle = 45, 
+  hjust = 1, vjust = 1)) + geom_jitter(alpha = 1 / 35)
+
+p11 + scale_y_log10()
+
+```
+
+Not much of a trend in contribution amount and date. 
+The amounts appear to stay constant across time. 
+There does appear to be more data points 
+toward the end of the election season. I want to try
+grouping the dates together to see if I can spot
+any kind of a trend in the amounts 
+given in each month. 
+
+
+```{r echo=FALSE}
+
+month_contributions <- group_by(contribs_oh, month)
+monthly.mon_total <- summarise(month_contributions, 
+             monthly_total = sum(contb_receipt_amt),
+             monthly_mean = mean(contb_receipt_amt),
+             n = n())
+
+monthly.mon_total <- arrange(monthly.mon_total)
+
+p12 <- ggplot(aes(x = month, y = contb_receipt_amt),
+  data = contribs_oh) + theme(axis.text.x = 
+  element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  geom_boxplot(aes(group = month)) + 
+  ylim(0, 2500)
+
+p12
+
+p12 + scale_y_log10()
+```
+
+I want to show both the log transformed graph and not 
+transformed graph here. In the former, you can
+begin to see a trend in when the contributions come 
+to a campaign. It looks like the contributions ramp 
+up a little bit after the first month of 2012, and 
+around the conventions. In the latter, 
+you can see a more broad trend of a higher number
+of outliers after the first of the year.
+
+
+```{r echo=FALSE}
+p13 <- ggplot(aes(x = month, y = monthly_total), 
+  data = monthly.mon_total) + theme(axis.text.x = 
+  element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  geom_line()
+
+p13 
+
+
+p14 <- ggplot(aes(x = month, y = monthly_total), 
+  data = monthly.mon_total) + theme(axis.text.x = 
+  element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  geom_bar(stat="identity")
+
+p14
+
+```
+
+Contributions definitely ramp up toward the end
+of the election per the monthly totals. That 
+makes a good bit of sense as there is a huge 
+push to get donations toward the latter part 
+of a campaign. Also voter interest tends to see 
+a surge in the last few months of a campaign. 
+
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+One interesting relationship I noticed was the somewhat
+generous giving of teachers in the state of Ohio. The 
+interquartile range is on the smaller end as it 
+compares to the other top occupations; 
+however there are still several outliers on the 
+lower end of the y-axis range. This pattern 
+actually holds true with all of the occupations: 
+smallish interquartile ranges with many outliers. 
+In regard to contribution amount and city, there 
+were more contributors and more outliers in the higher 
+populated urban cities.
+
+
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+
+I did not observe any interesting relationships 
+between other features of the dataset. However, 
+I did create a couple new variables to look at 
+the relationship of contribution amount totals 
+across time, month and week.
+
+
+### What was the strongest relationship you found?
+
+The strongest relationship I was able to find 
+was between the total amount given in a month,
+and the month of the campaign. The monthly totals 
+given seemed to ramp up as election day got closer. 
+
+
+
+# Multivariate Plots Section
+
+```{r echo=FALSE}
+  
+
+cand_contributions <- group_by(contribs_oh, 
+                               cand_nm, month)
+cand_contributions <- 
+  subset(cand_contributions, cand_nm %in% 
+  c("Obama, Barack", "Romney, Mitt", 
+    "Santorum, Rick", "Paul, Ron"))
+
+cand.mon_total <- summarise(cand_contributions, 
+             monthly_total = sum(contb_receipt_amt),
+             monthly_mean = mean(contb_receipt_amt),
+             n = n())
+
+summary(cand.mon_total)
+
+
+p15 <- ggplot(aes(x = month, y = monthly_total), 
+  data = cand.mon_total) + theme(axis.text.x = 
+  element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  geom_line(aes(color = cand_nm), size = 1.20) +
+  scale_color_brewer(type = "qual", palette = "Accent",
+  guide = guide_legend(title = "Candidate", 
+  reverse = T)) + theme_dark()
+
+p15
+
+
+p15a <- ggplot(aes(x = month, y = contb_receipt_amt),
+  data = cand_contributions) + geom_line(aes(color = cand_nm),
+  stat = 'summary', fun.y = mean, size = 1.15) +
+  geom_line(linetype = 3, stat = "summary", fun.y = mean) +
+  scale_color_brewer(type = "qual", palette = 'Dark2', 
+  guide = guide_legend(title = "Candidate", reverse = T)) +
+  theme_light()
+
+p15a
+
+```
+
+Monthly totals for Romney are higher in almost 
+every month. The grand mean follows a mostly similar 
+trend to the rest of the averages for the top 4 candidates. 
+
+
+```{r echo=FALSE}  
+city_contributions <- group_by(contribs_oh, 
+                               contbr_city, month)
+
+city_contributions <- subset(city_contributions,
+                             contbr_city %in% top_cities)
+
+city.mon_total <- summarise(city_contributions, 
+             monthly_total = sum(contb_receipt_amt),
+             monthly_mean = mean(contb_receipt_amt),
+             n = n())
+
+summary(city.mon_total)
+
+p16 <- ggplot(aes(x = month, y = monthly_total),
+  data = city.mon_total) + 
+  theme(axis.text.x = 
+  element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  geom_line(aes(color = contbr_city), size = 1.20) +
+  scale_color_brewer(type = "qual", palette = "Set1", 
+  guide = guide_legend(title = "City", reverse = T)) +
+  theme_dark()
+
+p16
+
+p16a <- ggplot(aes(x = month, y = contb_receipt_amt),
+  data = city_contributions) +
+  geom_line(aes(color = contbr_city), stat = 'summary',
+  fun.y = mean, size = 1.15) +
+  geom_line(linetype = 3, stat = "summary", 
+  fun.y = mean) +
+  scale_color_brewer(type = "qual", palette = "Set3",
+  guide = guide_legend(title = "City", reverse = T)) +
+  theme_dark()
+
+p16a + scale_y_log10()
+
+```
+
+Monthly totals for contributions rack up in a fairly
+predictable fashion. The larger urban areas have
+higher monthly totals. In terms of averages, the plot 
+lines are a bit more scattered, but for the 
+most part follow the same trend of starting high, moving
+lower, before spiking in January 2012, moving lower, 
+then spiking again around the conventions, and then 
+leveling off for good.
+
+
+```{r echo=FALSE}
+occs_contributions <- group_by(contribs_oh, 
+                    contbr_occupation, month)
+occs_contributions <- subset(occs_contributions, 
+                    contbr_occupation %in% top_occs)
+
+occs.mon_total <- summarise(occs_contributions, 
+             monthly_total = sum(contb_receipt_amt),
+             monthly_mean = mean(contb_receipt_amt),
+             n = n())
+
+summary(occs.mon_total)
+
+p17 <- ggplot(aes(x = month, y = monthly_total), 
+  data = occs.mon_total) + theme(axis.text.x = 
+  element_text(angle = 45, hjust = 1, vjust = 1)) + 
+  geom_line(aes(color = contbr_occupation), 
+  size = 1.20) + scale_color_brewer(type = "qual", 
+  palette = "Set1",guide = guide_legend(
+  title = "Occupaton", reverse = T)) + theme_dark()
+
+p17
+
+
+
+p17b <- ggplot(aes(x = month, y = contb_receipt_amt),
+  data = occs_contributions) + geom_line(aes(color = 
+  contbr_occupation), stat = 'summary', 
+  fun.y = mean, size = 1.15) + geom_line(linetype = 3,
+  stat = "summary", fun.y = mean) + 
+  scale_color_brewer(type = "qual", palette = "Set1",
+  guide = guide_legend(title = "Occupation", 
+  reverse = T)) +
+  theme_dark()
+
+p17b + scale_y_log10()
+
+
+```
+
+It shouldn't be a huge surprise that retired folks
+have a much higher monthly total in the later
+months of a campaign when engagement is the highest.
+They are the most represented group in the 
+dataset so it makes pretty good sense that 
+they would consisently have higher monthly 
+contribution totals compared to other "professions." 
+
+Before I wrap up the multivariate plots section, I want 
+to see how the top occupations and the top cities
+gave to the top candidates. To do this, I'll create
+a couple new dataframes using dplyr.
+
+
+```{r echo=FALSE}
+#let's look at cities first
+
+contrib_cities_cand <- 
+  subset(contrib_cities, cand_nm %in% 
+  c("Obama, Barack", "Romney, Mitt", 
+    "Santorum, Rick", "Paul, Ron"))
+
+contrib_cand_select <- select(contrib_cities_cand,
+                              contbr_city, cand_nm,
+                              contb_receipt_amt)
+
+cities_cand_totals <- group_by(contrib_cand_select,
+                               contbr_city, cand_nm) %>%
+  summarise(mean = mean(contb_receipt_amt), 
+            sum = sum(contb_receipt_amt),
+            n = n())
+
+P25 <- ggplot(cities_cand_totals, aes(cand_nm, 
+      contbr_city, fill = sum)) + geom_raster() +
+  scale_fill_gradientn(colours = c("#0000FFFF","#FFFFFFFF","#FF0000FF"))
+
+P25
+
+```
+
+Rick Santorum did not receive any contributions in Shaker Heights. 
+Mitt Romney raked in the dough in Cinncinati. Barack Obama got his
+contributions from a spread of cities.
+
+Now lets see what the graph looks like for occupations. 
+
+
+```{r echo=FALSE}
+
+occs_contributions <- subset(occs_contributions, 
+                    contbr_occupation %in% top_occs)
+
+
+contrib_occs_cand <- 
+  subset(occs_contributions, cand_nm %in% 
+  c("Obama, Barack", "Romney, Mitt", 
+    "Santorum, Rick", "Paul, Ron"))
+
+
+occup_cand_select <- select(contrib_occs_cand,
+                     contbr_occupation, cand_nm,
+                              contb_receipt_amt)
+occup_cand_select <- subset(occup_cand_select, 
+                            select = -month)
+                             
+
+occup_cand_totals <- group_by(occup_cand_select,
+                               contbr_occupation, 
+                               cand_nm) %>%
+  summarise(mean = mean(contb_receipt_amt), 
+            sum = sum(contb_receipt_amt),
+            n = n())
+
+P25b <- ggplot(occup_cand_totals, 
+  aes(contbr_occupation, cand_nm, fill = sum)) +
+  geom_raster() + 
+  scale_fill_gradientn(colours = 
+  c("#DADA1B","#2EDA1B","#B0183B")) +
+   theme(axis.text.x = element_text(angle = 45, 
+                      hjust = 1, vjust = 1))
+
+P25b
+```
+
+Mitt Romney cleaned up with retired folks and those 
+for whom information on occupation could not be 
+obtained. He also did well with homemakers. 
+Barack Obama did well with retired folks as well, 
+and had support across almost all the 
+occupations.
+
+
+
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+In looking at averages of contribution amounts by 
+month for the candidates, the averages were higher
+earlier on in the campaign compared to later. This
+makes sense because those really engaged politically 
+tend to be of a higher socio-economic status, who 
+give their money to their preferred 
+campaign earlier on, while the other end of the 
+spectrum in terms of class comes around later on,
+and is of a lower socio-economic status. 
+
+Across month, city, and occupation, the monthly 
+contribution totals increased as the campaign drew 
+near. This makes sense because more people are 
+tuning in. These totals are going up, despite the
+fact that average campaign contributions seem to 
+decrease as the election gets closer. That's an 
+interesting, yet expected dicotmy. 
+
+
+### Were there any interesting or surprising interactions between features?
+The most surprising or interesting interaction
+I saw was between the month, monthly_total, and 
+candidate. Despite higher contribution totals 
+for Romney in the state, he was soundly defeated
+by Obama in the election.
+
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, Plot_One}
+
+
+p1a <- qplot(x= contb_receipt_amt, data = contribs_oh,
+  binwidth = .1) +
+  scale_x_log10(breaks = c(0, 10, 100, 1000)) + 
+  labs(title = "Log10 Individual Contribution Amount",
+  x = "Contribution Amount (in USD)",
+  y = "Number of Contributions")
+
+p1a
+
+  
+
+```
+
+### Description One
+
+The distribution of individual contributions on a
+log scale is fairly normalized. There looks to be
+slightly higher frequency on the lower side of $100,
+than on the higher side. Also, amounts 10, 50, 100,
+500, and 1000, are pretty well represented. 
+
+
+### Plot Two
+```{r echo=FALSE, Plot_Two}
+
+p8b <- ggplot(aes(x = contbr_occupation, 
+  y = contb_receipt_amt), data = top_occupations) + 
+  theme(axis.text.x = element_text(angle = 45,
+  hjust = 1, vjust = 1)) + geom_boxplot(fill = "red") +
+  theme(panel.background = 
+  element_rect(fill = 'green')) + 
+  labs(title = "Contributions of Most Common Occupations",
+  x = "Occupation", y = "Receipt Amount (in USD)") +
+  scale_y_log10()
+
+p8b
+
+```
+
+### Description Two
+
+The interquartile range for most of the occupations
+is fairly small. The interquartile range is 
+slightly larger for occupations with a history of 
+being highly compensated like Attorney or Physican.
+I guess it should be taken for granted, but the number
+of outlier contributions by those who are retired 
+slightly surprised me. They are almost 1/5 of the 
+data observations, and a good deal of them are 
+giving more than the most common contribution of $100. 
+
+
+### Plot Three
+```{r echo=FALSE, Plot_Three}
+
+p15b <- ggplot(aes(x = month, y = contb_receipt_amt),
+  data = cand_contributions) +
+  geom_line(aes(color = cand_nm), stat = 'summary', 
+  fun.y = mean, size = 1.15) +
+  geom_line(linetype = 3, stat = "summary", 
+  fun.y = mean) +
+  scale_color_brewer(type = "qual", 
+  guide = guide_legend(title = "Candidate", 
+  reverse = T)) +
+  labs(title = "Average Contribution By Month and 
+  Candidate", x = "Month of The Year", 
+  y = "Average Contribution (in USD)") +
+  theme(panel.background = 
+  element_rect(fill = 'green'))
+
+p15b
+
+
+```
+
+### Description Three
+
+It's somewhat surprising that the trend for the
+average contribution goes down as the election 
+gets closer. From left to right, the averages 
+begin to move downward, there is a spike at the
+beginning of the year, before they begin to 
+decrease again after the time around the 
+conventions. It sort of makes sense given those
+most likely to be engaged early on are wealthier
+and able to give more. Those who are less engaged
+tend to be less wealthy and more likely to engage
+with the race toward the latter weeks of a campaign,
+and there many more of those folks compared to the
+earlier crowd. 
+
+------
+
+# Reflection
+
+It was a pleasure to be able to work on this dataset.
+As I reflect on the project as a whole, the main 
+difficulty stemmed from wondering how I was going to
+be able to present any findings of use or insights, 
+which may not seem plausible on the surface. The data
+is somewhat limited because a good many of the 
+variables are administrative in nature or for 
+bookkeeping reasons, such as form_id. However, I was
+able to add a time series element to the data by adding
+new variables, month and Week, to the dataset. This 
+led to some counterintuitive conclusions I myself 
+wasn't expecting. For example, in regard to Mitt
+Romney, fewer people in a higher concentration 
+of cities, gave more fundraising dollars to him 
+than Obama, who received his contributions from 
+more people spread in concentration across
+more cities.
+
+As for ideas or questions for future work, I think it
+would be worthwhile to do a deeper dive into the 
+contributors/contributions for Mitt Romney and the
+contributors/contributions for Barack Obama. Even 
+though Romney received more money and higher money
+totals, he was beaten in the state by Obama. This 
+suggests that campaigns aren't won by the amount of
+money a candidate receives, but rather the number of
+people who give to the candidate. Did Barack Obama 
+have more contributors than Mitt Romney in the state
+of Ohio? If so, what were the demographics of those 
+people? What does it suggest about the difference 
+between the two campaigns?
+
+I can't say there were any really important decisions
+regarding the analysis of the dataset. However, early 
+on, I did key in on the variables in the dataset I 
+thought could illuminate the variable of interest, 
+contribution amount, the best without doing a bunch
+of investigation on many of the variables I did not
+use, because they did not seem like they would add
+anything to the analysis. Also, I keyed in on the 
+top occupations, cities, and candidates without doing
+much analysis of the middle or the bottom in each of
+those categories. The decision to do that was mainly
+due to thinking it would be harder to find any analysis
+or trend in a graph of any of those variables or 
+attributes of the dataset. 
+
+
+
+
+
+
+
+
+
